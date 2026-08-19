@@ -1,0 +1,46 @@
+name: Export NQ NPZ
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install reader
+        run: pip install --quiet pandas pyarrow numpy
+      - name: Fetch and convert public NQ dataset
+        run: |
+          git clone --depth 1 https://github.com/hindsight-finance/Silver-Bullet-AM-Session.git silver
+          if command -v git-lfs >/dev/null 2>&1; then (cd silver && git lfs pull) || true; fi
+          python - <<'PY'
+          import pandas as pd, numpy as np
+          p='silver/nq_1m.parquet'
+          df=pd.read_parquet(p)
+          cmap={c.lower():c for c in df.columns}
+          tc=cmap.get('datetime_et') or cmap.get('datetime') or cmap.get('timestamp')
+          ts=pd.to_datetime(df[tc], errors='coerce')
+          if ts.dt.tz is None:
+              ts=ts.dt.tz_localize('America/New_York', ambiguous='NaT', nonexistent='shift_forward')
+          else:
+              ts=ts.dt.tz_convert('America/New_York')
+          mask=ts.notna()
+          ts_ns=ts[mask].dt.tz_convert('UTC').astype('int64').to_numpy()
+          o=pd.to_numeric(df.loc[mask,cmap['open']],errors='coerce').to_numpy(np.float32)
+          h=pd.to_numeric(df.loc[mask,cmap['high']],errors='coerce').to_numpy(np.float32)
+          l=pd.to_numeric(df.loc[mask,cmap['low']],errors='coerce').to_numpy(np.float32)
+          c=pd.to_numeric(df.loc[mask,cmap['close']],errors='coerce').to_numpy(np.float32)
+          good=np.isfinite(o)&np.isfinite(h)&np.isfinite(l)&np.isfinite(c)
+          np.savez_compressed('nq_1m.npz', ts=ts_ns[good], open=o[good], high=h[good], low=l[good], close=c[good])
+          print('rows',good.sum())
+          PY
+          ls -lh nq_1m.npz
+      - name: Upload NPZ
+        uses: actions/upload-artifact@v4
+        with:
+          name: nq-npz
+          path: nq_1m.npz
+          compression-level: 0
