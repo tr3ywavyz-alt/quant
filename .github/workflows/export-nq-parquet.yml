@@ -1,0 +1,23 @@
+name: Export NQ Parquet
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch public NQ dataset
+        run: |
+          git clone --depth 1 https://github.com/hindsight-finance/Silver-Bullet-AM-Session.git silver
+          if command -v git-lfs >/dev/null 2>&1; then (cd silver && git lfs pull) || true; fi
+          ls -lh silver/nq_1m.parquet
+      - name: Upload raw parquet
+        uses: actions/upload-artifact@v4
+        with:
+          name: nq-parquet
+          path: silver/nq_1m.parquet
+          compression-level: 0
