@@ -1,0 +1,38 @@
+name: Run V106 Streaming Audit Windows
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v106-audit
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install numpy pandas pyarrow
+      - name: Fetch sources
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/cayao2012/ICT-bot.git ictbot
+          git clone --depth 1 https://github.com/hindsight-finance/Silver-Bullet-AM-Session.git silver
+          (cd silver && git lfs pull) || true
+          ls -lh silver/nq_1m.parquet
+      - name: Run streaming live-safe audit
+        run: python -u audit_v106_stream.py | Tee-Object -FilePath v106_stream.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v106-stream-results-win
+          path: |
+            v106_stream.log
+            v106_stream_summary.json
+            v106_stream_trades.csv
+          if-no-files-found: warn
