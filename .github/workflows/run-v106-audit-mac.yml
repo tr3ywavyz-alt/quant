@@ -1,0 +1,38 @@
+name: Run V106 Audit macOS
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v106-audit
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install numpy pandas pyarrow
+      - name: Fetch exact strategy source
+        run: git clone --depth 1 https://github.com/cayao2012/ICT-bot.git ictbot
+      - name: Fetch independent NQ dataset
+        run: |
+          git clone --depth 1 https://github.com/hindsight-finance/Silver-Bullet-AM-Session.git silver
+          (cd silver && git lfs pull) || true
+          ls -lh silver/nq_1m.parquet
+          file silver/nq_1m.parquet
+      - name: Run audit
+        run: python3 -u audit_v106.py | tee v106_audit.log
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v106-audit-results-mac
+          path: |
+            v106_audit.log
+            v106_summary.json
+            v106_trades.csv
+          if-no-files-found: warn
