@@ -2,6 +2,8 @@ name: EQX Ledger Audit
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -13,7 +15,7 @@ jobs:
       - name: Recalculate EQX ledger
         run: |
           python - <<'PY'
-          import csv, urllib.request, datetime as dt, math
+          import csv, urllib.request, datetime as dt
           url='https://raw.githubusercontent.com/hindsight-finance/eqx-mech/main/backtest/backtest_results.csv'
           urllib.request.urlretrieve(url,'eqx.csv')
           rows=[]
@@ -24,20 +26,24 @@ jobs:
                       pts=float(r['pnl_points'])
                   except: continue
                   same=en.date()==ex.date()
-                  # Require same-day and exit before 16:59 ET. Charge 0.25pt adverse on each side + $1.82/MNQ = .91pt equiv.
+                  # Same-day prop-compatible holds only. Friction: 0.25 NQ point adverse each side + $1.82/MNQ = 0.91 NQ point equivalent.
                   if same and ex.time() < dt.time(16,59):
                       net=pts-1.41
-                      rows.append((en,ex,net,r.get('entry_model',''),r.get('setup_score',''),r.get('time_of_day_interval','')))
+                      hold=(ex-en).total_seconds()
+                      rows.append((en,ex,net,r.get('entry_model',''),r.get('setup_score',''),r.get('time_of_day_interval',''),hold))
           def stats(xs):
               gw=sum(x[2] for x in xs if x[2]>0); gl=-sum(x[2] for x in xs if x[2]<0)
-              return len(xs), sum(x[2]>0 for x in xs)/len(xs) if xs else 0, gw/gl if gl else 999, sum(x[2] for x in xs)/len(xs) if xs else 0
+              pos=sum(x[2] for x in xs if x[2]>0); pos10=sum(x[2] for x in xs if x[2]>0 and x[6]>10)
+              return {'n':len(xs),'wr':sum(x[2]>0 for x in xs)/len(xs) if xs else 0,'pf':gw/gl if gl else 999,'avg_pts':sum(x[2] for x in xs)/len(xs) if xs else 0,'trade_gt10':sum(x[6]>10 for x in xs)/len(xs) if xs else 0,'profit_gt10':pos10/pos if pos else 0}
           print('CLEAN_ALL',stats(rows))
           for y in range(2020,2026): print('YEAR',y,stats([x for x in rows if x[0].year==y]))
-          for model in ['IFVG','CC']:
+          models=sorted(set(x[3] for x in rows))
+          print('MODELS',models)
+          for model in models:
               print('MODEL',model,stats([x for x in rows if x[3]==model]))
               for y in range(2020,2026): print('MODEL_YEAR',model,y,stats([x for x in rows if x[3]==model and x[0].year==y]))
-          for score in range(8,14):
+          for score in range(8,16):
               xs=[x for x in rows if x[4] and int(float(x[4]))>=score]
               print('SCORE_GE',score,stats(xs))
-              print('SCORE_YEARS',score,[stats([x for x in xs if x[0].year==y])[2] for y in range(2021,2026)])
+              print('SCORE_YEARS',score,[stats([x for x in xs if x[0].year==y])['pf'] for y in range(2021,2026)])
           PY
