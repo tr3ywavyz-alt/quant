@@ -1,0 +1,43 @@
+name: EQX Ledger Audit
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recalculate EQX ledger
+        run: |
+          python - <<'PY'
+          import csv, urllib.request, datetime as dt, math
+          url='https://raw.githubusercontent.com/hindsight-finance/eqx-mech/main/backtest/backtest_results.csv'
+          urllib.request.urlretrieve(url,'eqx.csv')
+          rows=[]
+          with open('eqx.csv',newline='') as f:
+              for r in csv.DictReader(f):
+                  try:
+                      en=dt.datetime.fromisoformat(r['entry_time']); ex=dt.datetime.fromisoformat(r['exit_time'])
+                      pts=float(r['pnl_points'])
+                  except: continue
+                  same=en.date()==ex.date()
+                  # Require same-day and exit before 16:59 ET. Charge 0.25pt adverse on each side + $1.82/MNQ = .91pt equiv.
+                  if same and ex.time() < dt.time(16,59):
+                      net=pts-1.41
+                      rows.append((en,ex,net,r.get('entry_model',''),r.get('setup_score',''),r.get('time_of_day_interval','')))
+          def stats(xs):
+              gw=sum(x[2] for x in xs if x[2]>0); gl=-sum(x[2] for x in xs if x[2]<0)
+              return len(xs), sum(x[2]>0 for x in xs)/len(xs) if xs else 0, gw/gl if gl else 999, sum(x[2] for x in xs)/len(xs) if xs else 0
+          print('CLEAN_ALL',stats(rows))
+          for y in range(2020,2026): print('YEAR',y,stats([x for x in rows if x[0].year==y]))
+          for model in ['IFVG','CC']:
+              print('MODEL',model,stats([x for x in rows if x[3]==model]))
+              for y in range(2020,2026): print('MODEL_YEAR',model,y,stats([x for x in rows if x[3]==model and x[0].year==y]))
+          for score in range(8,14):
+              xs=[x for x in rows if x[4] and int(float(x[4]))>=score]
+              print('SCORE_GE',score,stats(xs))
+              print('SCORE_YEARS',score,[stats([x for x in xs if x[0].year==y])[2] for y in range(2021,2026)])
+          PY
