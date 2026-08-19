@@ -2,6 +2,8 @@ name: Run V106 Streaming Audit
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
