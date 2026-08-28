@@ -17,11 +17,11 @@ def test_evaluate_trades_builds_risk_aware_report() -> None:
     report = evaluate_trades(trades, starting_equity=1000)
 
     assert report.trades == 3
-    assert report.net_pnl == 115
-    assert report.ending_equity == 1115
+    assert report.net_pnl == 120
+    assert report.ending_equity == 1120
     assert report.max_drawdown == 45
     assert report.profit_factor == 165 / 45
-    assert report.expectancy == pytest.approx(115 / 3)
+    assert report.expectancy == pytest.approx(40)
     assert report.win_rate == pytest.approx(2 / 3)
 
 
